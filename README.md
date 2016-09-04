@@ -21,6 +21,10 @@ Energy meter that uses optical port of installed energy meter (_that red blinkin
 - Uses NO interrupts. Assumed that frequency is enough to determine each impulse.
 - Provided determination of unusually long impulses
 - Provided count of 1kW/h single cycle in packet (_allows to decide about missed packets if throttling is used_)
+- Packet contains:
+  - Current consumption rate (_kWh_) - 0.01 (_float, 2 decimals, accuracy 0.01_)
+  - Consumed amount (_kWh_)  - 123456.05 (_float, 2 decimals, accuracy 0.05_)
+  - Impulses count (_single cycle_) - 1234 (_integer_)
 
 ## TODO:
 
