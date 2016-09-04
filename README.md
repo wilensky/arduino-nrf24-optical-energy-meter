@@ -28,8 +28,8 @@ Energy meter that uses optical port of installed energy meter (_that red blinkin
 
 ## TODO:
 
-- Configurable number of impulses per kW/h during operation (**a feature to implement**)
-- Possbility of adding current meter readings during operation to sync with actual values (**a feature to implement**)
+- Configurable number of impulses per kW/h during operation
+- Possbility of adding current meter readings during operation to sync with actual values
 - Real-time configurable packet throttling
 
 This hardware is meant to be used as separate component of Home Automation Network.
