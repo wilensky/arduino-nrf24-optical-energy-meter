@@ -17,14 +17,15 @@ U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_DEV_0|U8G_I2C_OPT_NO_ACK|U8G_I2C_OPT_FAST)
 RF24 radio(RF_CS, RF_CSN);
 const uint64_t pipes[2] = { 0xe7e7e7e7e7LL, 0xc2c2c2c2c2LL };
 
-volatile int impsKWh = 1000; // Impulses per kWh
+volatile int impsKWh = 500; // Impulses per kWh
 volatile unsigned long impulses = 0; // Impulses captured (0 .. impsKWh]
-volatile unsigned long impCap; // Millisecond on which impulse was captured
-volatile unsigned int impPeriod; // Impulse period (ms)
+volatile unsigned long impCap = 0; // Millisecond on which impulse was captured
+volatile unsigned int impPeriod = 0; // Impulse period (ms)
 volatile float consumedKW = 0; // Consumed kW amount
 volatile int one20thKWh = (int)(impsKWh/20); // Impulses per 1/20 kWh
 
 float impsRatePerHour = 0; // Approx kWh rate
+float lastConsumedKW = 0; // Last sent consumed kW amount
 
 void capture() {
   int state = digitalRead(BPW40_PIN);
@@ -54,9 +55,14 @@ void setup(void) {
 
   radio.begin();  
   radio.openWritingPipe(pipes[0]);
+  radio.openReadingPipe(1, pipes[1]);
   radio.setPayloadSize(RF_PACKET_SIZE);
   radio.setChannel(60);
   radio.setDataRate(RF24_2MBPS);
+  radio.powerUp();
+
+  radio.startListening();
+  
   radio.printDetails();
 
   pinMode(BPW40_PIN, INPUT_PULLUP);
@@ -66,7 +72,20 @@ void setup(void) {
 }
 
 void loop(void) {
-  impsRatePerHour = calculateRate(impPeriod); // Calculating consume rate basing on last recorded impulse period
+  if (radio.available()) {                                // if there is data ready      
+    Serial.println(radio.available());
+    char recvd[RF_PACKET_SIZE];
+    while (radio.available()) {                            // Dump the payloads until we've gotten everything
+      radio.read(&recvd, RF_PACKET_SIZE);                  // Get the payload, and see if this was the last one.
+      printf("Got payload %lu @ %lu...", recvd, millis()); // Include our time, because the ping_out millis counter is unreliable due to it sleeping
+    }
+  }
+  
+  impsRatePerHour = calculateRate(impPeriod, impsKWh); // Calculating consume rate basing on last recorded impulse period
+
+  if (consumedKW != lastConsumedKW && ((impulses % one20thKWh) == 0)) {
+    sendPacket();
+  }
 
   u8g.firstPage();
   
@@ -83,33 +102,30 @@ void loop(void) {
   } while( u8g.nextPage() );
 }
 
-float calculateRate(int period) {
-  return (3600000.0 / (float)impPeriod) / (float)impsKWh; // 3600000 millis in 1 hour
+float calculateRate(int period, int impsPerKWh) {
+  return period <= 1 ? 0 : (float)(3600000 / period) / (float)impsPerKWh; // 3600000 millis in 1 hour
 }
 
 void sendPacket() {
-  char rate[5]; // Formatted rate
+  char rate[7]; // Formatted rate
   dtostrf(impsRatePerHour, 4, 2, rate);
 
-  char consumed[9]; // Formatted consumed
-  dtostrf(consumedKW, 8, 2, consumed);      
-
-  String p = "";
-  p.concat(impsRatePerHour);
-  p.concat("|");
-  p.concat(deblank(consumed));
-  p.concat("|");
-  p.concat(impulses);
+  char consumed[11]; // Formatted consumed
+  dtostrf(consumedKW, 8, 2, consumed);
   
   char nrfPacket[RF_PACKET_SIZE];
 
-  p.toCharArray(nrfPacket, RF_PACKET_SIZE-1);
+  sprintf(nrfPacket, "%s|%s|%i", rate, deblank(consumed), impulses);
 
   Serial.println(nrfPacket);
 
   radio.stopListening();
   radio.flush_tx();
   radio.write(&nrfPacket, sizeof(nrfPacket));
+
+  delay(100);
+  
+  radio.startListening();
 }
 
 char * deblank(char *str) {
